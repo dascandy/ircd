@@ -9,7 +9,7 @@ project(irc)
 
 
 add_executable(${PROJECT_NAME} 
-  include/irchost.cpp
+  src/irchost.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}

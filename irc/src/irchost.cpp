@@ -46,13 +46,8 @@ public:
         sock_.async_read_some(boost::asio::buffer(readBuffer, sizeof(readBuffer)), boost::asio::bind_executor(strand_, [this, self = shared_from_this()](boost::system::error_code ec, size_t size) {
             on_read(ec, size);
         }));
-        write(":server 001 :is testing\r\n");
-        write(":server 002 :server is testing\r\n");
-        write(":server 003 :server is testing\r\n");
-        write(":sereer 004 :server is testing\r\n");
         write("PING :server is testing\r\n");
     }
-
 
     void on_read(boost::system::error_code ec, size_t size) {
         if(ec) {
@@ -66,6 +61,7 @@ public:
     }
     
     void write(const std::string& str) {
+        printf("sending %s value %s\n", nick.c_str(), str.c_str());
         outBuffer += str;
         if (!writeActive) {
             writeActive = true;
@@ -92,7 +88,7 @@ public:
     std::string outBuffer;
     std::string inBuffer;
     char readBuffer[4096];
-    std::string nick = "Anonymous";
+    std::string nick;
 };
 
 class IrcHost : public IIrcHost {
@@ -135,8 +131,15 @@ public:
     commands["NICK"] = [this](std::shared_ptr<peer> p, std::string param){
       std::string oldnick = p->nick;
       p->nick = param;
-      for (auto& client : clients) {
-        client->write(":" + oldnick + " NICK " + param + "\r\n");
+      if (!oldnick.empty()) {
+        for (auto& client : clients) {
+          client->write(":" + oldnick + " NICK " + param + "\r\n");
+        }
+      } else {
+        p->write(":server 001 :" + p->nick + "\r\n");
+        p->write(":server 002 :server is testing\r\n");
+        p->write(":server 003 :server is testing\r\n");
+        p->write(":sereer 004 :server is testing\r\n");
       }
     };
     commands["PRIVMSG"] = [this](std::shared_ptr<peer> p, std::string param){
@@ -144,7 +147,8 @@ public:
       if (target.empty()) return;
       if (channels.find(target) != channels.end()) {
         for (auto& client : channels[target]) {
-          client->write(":" + p->nick + " PRIVMSG " + param + "\r\n");
+          if (p != client)
+            client->write(":" + p->nick + " PRIVMSG " + param + "\r\n");
         }
       }
     };
@@ -176,7 +180,7 @@ public:
     std::string& buffer = client->inBuffer;
     size_t end = buffer.find_first_of("\n");
     while (end != buffer.npos) {
-      std::string sub = buffer.substr(0, end);
+      std::string sub = buffer.substr(0, end-1);
       printf("Command: %s\n", sub.c_str());
       std::string cmd = sub.substr(0, sub.find_first_of(" "));
       auto it = commands.find(cmd);
