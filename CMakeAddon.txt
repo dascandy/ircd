@@ -1,0 +1,49 @@
+
+if (DEFINED COVERAGE)
+  message("Making COVERAGE build")
+  set(CMAKE_CXX_FLAGS "-std=c++17 -g -O0 -Wall -Wextra -Wpedantic -pthread -ffunction-sections -fdata-sections -g -Wno-implicit-fallthrough -fprofile-arcs -ftest-coverage -fno-strict-aliasing")
+  set(CMAKE_EXE_LINKER_FLAGS "-fprofile-arcs -ftest-coverage")
+elseif (DEFINED DEBUG)
+  message("Making DEBUG build")
+  set(CMAKE_CXX_FLAGS "-std=c++17 -g -O0 -Wall -Wextra -Wpedantic -pthread -ffunction-sections -fdata-sections -g -Wno-implicit-fallthrough -fsanitize=address,undefined -fno-strict-aliasing")
+  set(CMAKE_EXE_LINKER_FLAGS "-fsanitize=address,undefined")
+else()
+  message("Making RELEASE build")
+  set(CMAKE_CXX_FLAGS "-std=c++17 -O3 -Wall -Wextra -Wpedantic -pthread -ffunction-sections -fdata-sections -g -Wno-implicit-fallthrough")
+endif()
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+if (DEFINED DEBUG OR DEFINED COVERAGE)
+  project(all_tests)
+  add_custom_target(all_tests ALL COMMAND echo "All tests successful")
+
+  if (DEFINED COVERAGE)
+    project(coverage)
+    add_custom_target(coverage ALL COMMAND lcov -c -d . -o x1.info >/dev/null 2>/dev/null && lcov -r x1.info \\*thirdparty\\* -o x2.info >/dev/null 2>/dev/null && lcov -r x2.info \\/usr\\/include\\/\\* -o x3.info >/dev/null 2>/dev/null && genhtml x3.info | tail -n 3)
+    add_dependencies(coverage all_tests)
+  endif()
+
+  function(add_test name)
+    add_custom_command(OUTPUT ${name}_out 
+                       COMMAND ${name} >${name}_out 2>&1 || (cat ${name}_out && false)
+                       DEPENDS ${name})
+    add_custom_target(${name}_run DEPENDS ${name}_out)
+    add_dependencies(all_tests ${name}_run)
+    if (DEFINED COVERAGE)
+      # Coverage with lcov requires all tests to run sequentially, so that the coverage 
+      # files are not written from multiple processes at the same time.
+      # This adds a dependency from each test defined to the previous test defined, so that they all run in sequence.
+      # It's terrible for test performance, so we only do it if we ask for coverage.
+      if (${last_test_name})
+        add_dependencies(${name}_run ${last_test_name})
+      endif()
+      set(last_test_name ${name}_run)
+    endif()
+  endfunction()
+else()
+  function(add_test name)
+  endfunction()
+endif()
+
